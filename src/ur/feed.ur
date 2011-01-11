@@ -8,8 +8,9 @@ datatype pattern internal output =
 
 con tagInternal (attrs :: {Unit}) = option {Attrs : $(mapU string attrs), Cdata : option string}
 
-fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
-    : pattern (tagInternal attrs) {Attrs : $(mapU string attrs), Cdata : option string} =
+fun tagG [attrs ::: {Unit}] [t ::: Type] (fl : folder attrs) (accept : {Attrs : $(mapU string attrs), Cdata : option string} -> option t)
+         (name : string) (attrs : $(mapU string attrs))
+    : pattern (tagInternal attrs) t =
     Transducer {Initial = None,
                 EnterTag = fn tinfo state =>
                               case state of
@@ -28,9 +29,27 @@ fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU s
                                                       | Some v => Some ({nm = v} ++ r))
                                             (Some {}) fl attrs of
                                           None => None
-                                        | Some vs => Some (Some {Attrs = vs, Cdata = tinfo.Cdata}),
+                                        | Some vs =>
+                                          let
+                                              val v = {Attrs = vs, Cdata = tinfo.Cdata}
+                                          in
+                                              case accept v of
+                                                  None => None
+                                                | Some _ => Some (Some v)
+                                          end,
                 ExitTag = Some,
-                Finished = fn x => x}
+                Finished = Option.bind accept}
+
+fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
+    : pattern (tagInternal attrs) {Attrs : $(mapU string attrs), Cdata : option string} =
+    @tagG fl Some name attrs
+
+fun tagA [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
+    : pattern (tagInternal attrs) $(mapU string attrs) =
+    @tagG fl (fn r => Some r.Attrs) name attrs
+
+fun tagC (name : string) : pattern (tagInternal []) string =
+    tagG (fn r => r.Cdata) name {}
 
 datatype status a = Initial | Failed | Matched of a
 

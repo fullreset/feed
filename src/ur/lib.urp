@@ -6,5 +6,6 @@ benignEffectful FeedFfi.fetch
 
 $/char
 $/string
+$/option
 $/list
 feed

@@ -5,6 +5,10 @@ con tagInternal :: {Unit} -> Type
 val tag : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
           -> pattern (tagInternal attrs) {Attrs : $(mapU string attrs), Cdata : option string}
 
+val tagA : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
+          -> pattern (tagInternal attrs) $(mapU string attrs)
+val tagC : string -> pattern (tagInternal []) string
+
 con childrenInternal :: Type -> {Type} -> Type
 
 val children : parentI ::: Type -> parent ::: Type -> children ::: {(Type * Type)}
