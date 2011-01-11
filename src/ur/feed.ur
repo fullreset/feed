@@ -135,13 +135,13 @@ fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal d
                         None => return ()
                       | Some (_, xml) => recur xml state
                 else if xml <> "" && String.sub xml 0 = #"!" then
-                    if String.length xml >= 3 && String.sub xml 1 = #"-" && String.sub xml 2 = #"-" then
+                    if String.lengthGe xml 3 && String.sub xml 1 = #"-" && String.sub xml 2 = #"-" then
                         let
                             fun skipper xml =
                                 case String.split xml #"-" of
                                     None => xml
                                   | Some (_, xml) =>
-                                    if String.length xml >= 2 && String.sub xml 0 = #"-" && String.sub xml 1 = #"\x3E" then
+                                    if String.lengthGe xml 2 && String.sub xml 0 = #"-" && String.sub xml 1 = #"\x3E" then
                                         String.suffix xml 2
                                     else
                                         skipper xml
@@ -168,7 +168,7 @@ fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal d
                                          None => (xml, acc, True)
                                        | Some (_, xml) => (xml, acc, True))
                                   | _ =>
-                                    if String.length xml >= 2 && Char.isSpace (String.sub xml 0) then
+                                    if String.lengthGe xml 2 && Char.isSpace (String.sub xml 0) then
                                         readAttrs (String.sub xml 0) (String.suffix xml 1) acc
                                     else if xml <> "" && String.sub xml 0 = #"\x3E" then
                                         (String.suffix xml 1, acc, False)
@@ -210,7 +210,7 @@ fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal d
                                             case String.split xml #"]" of
                                                 None => (acc ^ xml, None)
                                               | Some (pre, xml) =>
-                                                if String.length xml >= 2 && String.sub xml 0 = #"]" && String.sub xml 1 = #"\x3E" then
+                                                if String.lengthGe xml 2 && String.sub xml 0 = #"]" && String.sub xml 1 = #"\x3E" then
                                                     (String.suffix xml 2, Some (acc ^ pre))
                                                 else
                                                     skipper xml (acc ^ "]" ^ pre)
