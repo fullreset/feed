@@ -4,4 +4,7 @@ link -lurweb_feed
 effectful FeedFfi.init
 benignEffectful FeedFfi.fetch
 
+$/char
+$/string
+$/list
 feed
