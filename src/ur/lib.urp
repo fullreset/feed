@@ -1,0 +1,7 @@
+library config
+ffi feedFfi
+link -lurweb_feed
+effectful FeedFfi.init
+benignEffectful FeedFfi.fetch
+
+feed

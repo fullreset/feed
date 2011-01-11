@@ -1,0 +1,4 @@
+library ../src/ur/lib
+rewrite all Mr/*
+
+mr
