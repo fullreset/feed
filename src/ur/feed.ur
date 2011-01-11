@@ -1,44 +1,51 @@
 task initialize = fn () => FeedFfi.init
 
-datatype pattern internal output =
-         Transducer of {Initial : internal,
-                        EnterTag : {Tag : string, Attrs : list (string * string), Cdata : option string} -> internal -> option internal,
-                        ExitTag : internal -> option internal,
-                        Finished : internal -> option output}
+con pattern internal output = {Initial : internal,
+                               EnterTag : {Tag : string, Attrs : list (string * string), Cdata : option string} -> internal -> option internal,
+                               ExitTag : internal -> option internal,
+                               Finished : internal -> option (output * bool)}
+
+val null : pattern unit (variant []) =
+    {Initial = (),
+     EnterTag = fn _ () => Some (),
+     ExitTag = fn () => Some (),
+     Finished = fn () => None}
 
 con tagInternal (attrs :: {Unit}) = option {Attrs : $(mapU string attrs), Cdata : option string}
 
 fun tagG [attrs ::: {Unit}] [t ::: Type] (fl : folder attrs) (accept : {Attrs : $(mapU string attrs), Cdata : option string} -> option t)
          (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) t =
-    Transducer {Initial = None,
-                EnterTag = fn tinfo state =>
-                              case state of
-                                  Some _ => None
-                                | None =>
-                                  if tinfo.Tag <> name then
-                                      None
-                                  else
-                                      case @foldUR [string] [fn r => option $(mapU string r)]
-                                            (fn [nm ::_] [r ::_] [[nm] ~ r] aname ro =>
-                                                case ro of
-                                                    None => None
-                                                  | Some r =>
-                                                    case List.assoc aname tinfo.Attrs of
-                                                        None => None
-                                                      | Some v => Some ({nm = v} ++ r))
-                                            (Some {}) fl attrs of
-                                          None => None
-                                        | Some vs =>
-                                          let
-                                              val v = {Attrs = vs, Cdata = tinfo.Cdata}
-                                          in
-                                              case accept v of
-                                                  None => None
-                                                | Some _ => Some (Some v)
-                                          end,
-                ExitTag = Some,
-                Finished = Option.bind accept}
+    {Initial = None,
+     EnterTag = fn tinfo _ =>
+                   if tinfo.Tag <> name then
+                       None
+                   else
+                       case @foldUR [string] [fn r => option $(mapU string r)]
+                             (fn [nm ::_] [r ::_] [[nm] ~ r] aname ro =>
+                                 case ro of
+                                     None => None
+                                   | Some r =>
+                                     case List.assoc aname tinfo.Attrs of
+                                         None => None
+                                       | Some v => Some ({nm = v} ++ r))
+                             (Some {}) fl attrs of
+                           None => None
+                         | Some vs =>
+                           let
+                               val v = {Attrs = vs, Cdata = tinfo.Cdata}
+                           in
+                               case accept v of
+                                   None => None
+                                 | Some _ => Some (Some v)
+                           end,
+     ExitTag = fn _ => None,
+     Finished = fn state => case state of
+                                None => None
+                              | Some state =>
+                                case accept state of
+                                    None => None
+                                  | Some v => Some (v, False)}
 
 fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) {Attrs : $(mapU string attrs), Cdata : option string} =
@@ -51,115 +58,154 @@ fun tagA [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU 
 fun tagC (name : string) : pattern (tagInternal []) string =
     tagG (fn r => r.Cdata) name {}
 
-datatype status a = Initial | Failed | Matched of a
+datatype status a = Initial | Pending of a | Matched of a
 
 con childrenInternal (parent :: Type) (children :: {Type}) = option (parent * int * $(map status children))
 
 fun children [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
-             ((Transducer parent) : pattern parentI parent) (children : $(map (fn (i, d) => pattern i d) children)) (fl : folder children)
+             (parent : pattern parentI parent) (children : $(map (fn (i, d) => pattern i d) children)) (fl : folder children)
     : pattern (childrenInternal parentI (map fst children)) (parent * $(map snd children)) =
-    Transducer {Initial = None,
-                EnterTag = fn tinfo state =>
-                              case state of
-                                  None =>
-                                  (case parent.EnterTag tinfo parent.Initial of
-                                       None => None
-                                     | Some pstate => Some (Some (pstate, 1, @map0 [status] (fn [t ::_] => Initial)
-                                                                              (@@Folder.mp [fst] [_] fl))))
-                                | Some (pstate, depth, cstates) =>
-                                  Some (Some (pstate,
-                                              depth+1,
-                                              @map2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn (i, d) => status i]
-                                               (fn [p] ((Transducer ch) : pattern p.1 p.2) (cstate : status p.1) =>
-                                                   case cstate of
-                                                       Failed => Failed
-                                                     | Initial =>
-                                                       (case ch.EnterTag tinfo ch.Initial of
-                                                            None => Failed
-                                                          | Some v => Matched v)
-                                                     | v => v)
-                                               fl children cstates)),
-                ExitTag = fn state =>
-                             case state of
-                                 None => None
-                               | Some (pstate, depth, cstates) =>
-                                 case (if depth = 1 then
-                                           parent.ExitTag pstate
-                                       else
-                                           Some pstate) of
-                                     None => None
-                                   | Some pstate =>
-                                     if depth = 1 then
-                                         Some (Some (pstate, 0, cstates))
-                                     else
-                                         case @foldR2 [fn (i, d) => pattern i d] [fn (i, d) => status i]
-                                               [fn cs => option $(map (fn (i, d) => status i) cs)]
-                                               (fn [nm ::_] [p ::_] [r ::_] [[nm] ~ r] ((Transducer ch) : pattern p.1 p.2) (cstate : status p.1) acc =>
-                                                   case acc of
-                                                       None => None
-                                                     | Some acc =>
-                                                       case cstate of
-                                                           Matched cstate =>
-                                                           (case ch.ExitTag cstate of
-                                                                None => None
-                                                              | Some cstate' => Some ({nm = Matched cstate'} ++ acc))
-                                                         | _ => Some ({nm = Initial} ++ acc))
-                                               (Some {}) fl children cstates of
-                                             None => None
-                                           | Some cstates =>
-                                             Some (Some (pstate, depth-1, cstates)),
-                Finished = fn state =>
-                              case state of
-                                  Some (pstate, 0, cstates) =>
-                                  (case parent.Finished pstate of
-                                       None => None
-                                     | Some pdata =>
-                                       case @foldR2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn cs => option $(map snd cs)]
-                                             (fn [nm ::_] [p ::_] [r ::_] [[nm] ~ r] ((Transducer ch) : pattern p.1 p.2) (cstate : status p.1) acc =>
-                                                 case acc of
+      {Initial = None,
+       EnterTag = fn tinfo state =>
+                     case state of
+                         None =>
+                         (case parent.EnterTag tinfo parent.Initial of
+                              None => None
+                            | Some pstate => Some (Some (pstate, 1, @map0 [status] (fn [t ::_] => Initial)
+                                                                     (@@Folder.mp [fst] [_] fl))))
+                       | Some (pstate, depth, cstates) =>
+                         Some (Some (pstate,
+                                     depth+1,
+                                     @map2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn (i, d) => status i]
+                                      (fn [p] (ch : pattern p.1 p.2) (cstate : status p.1) =>
+                                          case cstate of
+                                              Initial =>
+                                              (case ch.EnterTag tinfo ch.Initial of
+                                                   None => Initial
+                                                 | Some v =>
+                                                   case ch.Finished v of
+                                                       None => Pending v
+                                                     | _ => Matched v)
+                                            | Pending cstate =>
+                                              (case ch.EnterTag tinfo cstate of
+                                                   None => Initial
+                                                 | Some v =>
+                                                   case ch.Finished v of
+                                                       None => Pending v
+                                                     | _ => Matched v)
+                                            | v => v)
+                                      fl children cstates)),
+       ExitTag = fn state =>
+                    case state of
+                        None => None
+                      | Some (pstate, 1, cstates) =>
+                        (case parent.ExitTag pstate of
+                             None => None
+                           | Some pstate => Some (Some (pstate, 0, cstates)))
+                      | Some (pstate, depth, cstates) =>
+                        Some (Some (pstate, depth-1,
+                                    @map2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn (i, d) => status i]
+                                     (fn [p] (ch : pattern p.1 p.2) (cstate : status p.1) =>
+                                         case cstate of
+                                             Pending cstate =>
+                                             (case ch.ExitTag cstate of
+                                                  None => Initial
+                                                | Some cstate' =>
+                                                  case ch.Finished cstate' of
+                                                      None => Pending cstate'
+                                                    | _ => Matched cstate')
+                                           | _ => cstate)
+                              fl children cstates)),
+       Finished = fn state =>
+                     case state of
+                         Some (pstate, _, cstates) =>
+                         (case parent.Finished pstate of
+                              None => None
+                            | Some (pdata, pcont) =>
+                              case @foldR2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn cs => option $(map snd cs)]
+                                    (fn [nm ::_] [p ::_] [r ::_] [[nm] ~ r] (ch : pattern p.1 p.2) (cstate : status p.1) acc =>
+                                        case acc of
+                                            None => None
+                                          | Some acc =>
+                                            case cstate of
+                                                Matched cstate =>
+                                                (case ch.Finished cstate of
                                                      None => None
-                                                   | Some acc =>
-                                                     case cstate of
-                                                         Initial => None
-                                                       | Failed => None
-                                                       | Matched cstate =>
-                                                         case ch.Finished cstate of
-                                                             None => None
-                                                           | Some cdata => Some ({nm = cdata} ++ acc))
-                                             (Some {}) fl children cstates of
-                                           None => None
-                                         | Some cdata => Some (pdata, cdata))
-                                | _ => None}
+                                                   | Some (cdata, _) => Some ({nm = cdata} ++ acc))
+                                              | _ => None)
+                                    (Some {}) fl children cstates of
+                                  None => None
+                                | Some cdata => Some ((pdata, cdata), pcont))
+                       | _ => None}
 
-fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal data) (f : data -> transaction {}) (url : string) : transaction {} =
+con treeInternal (parent :: Type) (child :: Type) = option (parent * int * option child)
+
+fun tree [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]
+    (parent : pattern parentI parent) (child : pattern childI child)
+    : pattern (treeInternal parentI childI) (parent * child) =
+    {Initial = None,
+     EnterTag = fn tinfo state =>
+                   case state of
+                       None =>
+                       (case parent.EnterTag tinfo parent.Initial of
+                            None => None
+                          | Some pstate => Some (Some (pstate, 1, None)))
+                     | Some (pstate, depth, cstate) =>
+                       Some (Some (pstate,
+                                   depth+1,
+                                   child.EnterTag tinfo (Option.get child.Initial cstate))),
+     ExitTag = fn state =>
+                  case state of
+                      None => None
+                    | Some (pstate, 1, cstate) =>
+                      (case parent.ExitTag pstate of
+                           None => None
+                         | Some pstate => Some (Some (pstate, 0, cstate)))
+                    | Some (pstate, depth, cstate) =>
+                      Some (Some (pstate, depth-1, Option.bind child.ExitTag cstate)),
+     Finished = fn state =>
+                   case state of
+                       None => None
+                     | Some (pstate, _, cstate) =>
+                       case parent.Finished pstate of
+                           None => None
+                         | Some (pdata, _) =>
+                           case cstate of
+                               None => None
+                             | Some cstate =>
+                               case child.Finished cstate of
+                                   None => None
+                                 | Some (cdata, _) => Some ((pdata, cdata), True)}
+
+fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : data -> transaction {}) (url : string) : transaction {} =
     let
         fun recur xml state =
-            case String.split xml #"<" of
+            case String.seek xml #"<" of
                 None => return ()
-              | Some (_, xml) =>
+              | Some xml =>
                 if xml <> "" && String.sub xml 0 = #"/" then
-                    case String.split xml #"\x3E" of
+                    case String.seek xml #"\x3E" of
                         None => return ()
-                      | Some (_, xml) =>
+                      | Some xml =>
                         case p.ExitTag state of
                             None => recur xml p.Initial
                           | Some state =>
                             case p.Finished state of
                                  None => recur xml state
-                               | Some data =>
+                               | Some (data, cont) =>
                                  f data;
-                                 recur xml p.Initial
+                                 recur xml (if cont then state else p.Initial)
                 else if xml <> "" && String.sub xml 0 = #"?" then
-                    case String.split xml #"\x3E" of
+                    case String.seek xml #"\x3E" of
                         None => return ()
-                      | Some (_, xml) => recur xml state
+                      | Some xml => recur xml state
                 else if xml <> "" && String.sub xml 0 = #"!" then
                     if String.lengthGe xml 3 && String.sub xml 1 = #"-" && String.sub xml 2 = #"-" then
                         let
                             fun skipper xml =
-                                case String.split xml #"-" of
+                                case String.seek xml #"-" of
                                     None => xml
-                                  | Some (_, xml) =>
+                                  | Some xml =>
                                     if String.lengthGe xml 2 && String.sub xml 0 = #"-" && String.sub xml 1 = #"\x3E" then
                                         String.suffix xml 2
                                     else
@@ -168,12 +214,12 @@ fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal d
                             recur (skipper (String.suffix xml 3)) state
                         end
                     else
-                        case String.split xml #"]" of
+                        case String.seek xml #"]" of
                             None => return ()
-                          | Some (_, xml) =>
-                            case String.split xml #"\x3E" of
+                          | Some xml =>
+                            case String.seek xml #"\x3E" of
                                 None => return ()
-                              | Some (_, xml) => recur xml state
+                              | Some xml => recur xml state
                 else
                     case String.msplit {Needle = " >/", Haystack = xml} of
                         None => return ()
@@ -183,18 +229,18 @@ fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal d
                                 case ch of
                                     #"\x3E" => (xml, acc, False)
                                   | #"/" =>
-                                    (case String.split xml #"\x3E" of
+                                    (case String.seek xml #"\x3E" of
                                          None => (xml, acc, True)
-                                       | Some (_, xml) => (xml, acc, True))
+                                       | Some xml => (xml, acc, True))
                                   | _ =>
                                     if String.lengthGe xml 2 && Char.isSpace (String.sub xml 0) then
                                         readAttrs (String.sub xml 0) (String.suffix xml 1) acc
                                     else if xml <> "" && String.sub xml 0 = #"\x3E" then
                                         (String.suffix xml 1, acc, False)
                                     else if xml <> "" && String.sub xml 0 = #"/" then
-                                        (case String.split xml #"\x3E" of
+                                        (case String.seek xml #"\x3E" of
                                              None => (xml, acc, True)
-                                           | Some (_, xml) => (xml, acc, True))
+                                           | Some xml => (xml, acc, True))
                                     else
                                         case String.split xml #"=" of
                                             None => (xml, acc, False)
@@ -237,21 +283,26 @@ fun app [internal ::: Type] [data ::: Type] ((Transducer p) : pattern internal d
                                         skipper (String.suffix xml 9) ""
                                     end
                                 else
-                                    case String.split xml #"<" of
+                                    case String.split' xml #"<" of
                                         None => (xml, None)
-                                      | Some (cdata, xml) => ("<" ^ xml, Some cdata)
+                                      | Some (cdata, xml) => (xml, Some cdata)
                         in
                             case p.EnterTag {Tag = tagName, Attrs = attrs, Cdata = cdata} state of
                                 None => recur xml p.Initial
                               | Some state =>
-                                case (if ended then p.ExitTag state else Some state) of
-                                    None => recur xml p.Initial
-                                  | Some state =>
-                                    case p.Finished state of
-                                         None => recur xml state
-                                       | Some data =>
-                                         f data;
-                                         recur xml p.Initial
+                                case p.Finished state of
+                                     None =>
+                                     (case (if ended then p.ExitTag state else Some state) of
+                                          None => recur xml p.Initial
+                                        | Some state =>
+                                          case p.Finished state of
+                                              None => recur xml state
+                                            | Some (data, cont) =>
+                                              f data;
+                                              recur xml (if cont then state else p.Initial))
+                                   | Some (data, cont) =>
+                                     f data;
+                                     recur xml (if cont then state else p.Initial)
                         end
     in
         xml <- FeedFfi.fetch url;
