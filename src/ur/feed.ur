@@ -177,7 +177,11 @@ fun tree [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]
                                    None => None
                                  | Some (cdata, _) => Some ((pdata, cdata), True)}
 
-fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : data -> transaction {}) (url : string) : transaction {} =
+type document = string
+
+val fetch = FeedFfi.fetch
+
+fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : data -> transaction {}) (doc : document) : transaction {} =
     let
         fun recur xml state =
             case String.seek xml #"<" of
@@ -305,6 +309,5 @@ fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : dat
                                      recur xml (if cont then state else p.Initial)
                         end
     in
-        xml <- FeedFfi.fetch url;
-        recur xml p.Initial
+        recur doc p.Initial
     end

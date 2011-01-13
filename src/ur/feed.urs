@@ -23,4 +23,7 @@ val tree : parentI ::: Type -> parent ::: Type -> childI ::: Type -> child ::: T
            -> pattern parentI parent -> pattern childI child
            -> pattern (treeInternal parentI childI) (parent * child)
 
-val app : internal ::: Type -> data ::: Type -> pattern internal data -> (data -> transaction {}) -> string -> transaction {}
+type document
+
+val fetch : string (* url *) -> transaction document
+val app : internal ::: Type -> data ::: Type -> pattern internal data -> (data -> transaction {}) -> document -> transaction {}
