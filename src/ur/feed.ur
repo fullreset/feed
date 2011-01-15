@@ -11,9 +11,9 @@ val null : pattern unit (variant []) =
      ExitTag = fn () => Some (),
      Finished = fn () => None}
 
-con tagInternal (attrs :: {Unit}) = option {Attrs : $(mapU string attrs), Cdata : option string}
+con tagInternal (attrs :: {Unit}) = option {Attrs : $(mapU (option string) attrs), Cdata : option string}
 
-fun tagG [attrs ::: {Unit}] [t ::: Type] (fl : folder attrs) (accept : {Attrs : $(mapU string attrs), Cdata : option string} -> option t)
+fun tagG [attrs ::: {Unit}] [t ::: Type] (fl : folder attrs) (accept : {Attrs : $(mapU (option string) attrs), Cdata : option string} -> option t)
          (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) t =
     {Initial = None,
@@ -21,24 +21,16 @@ fun tagG [attrs ::: {Unit}] [t ::: Type] (fl : folder attrs) (accept : {Attrs : 
                    if tinfo.Tag <> name then
                        None
                    else
-                       case @foldUR [string] [fn r => option $(mapU string r)]
-                             (fn [nm ::_] [r ::_] [[nm] ~ r] aname ro =>
-                                 case ro of
-                                     None => None
-                                   | Some r =>
-                                     case List.assoc aname tinfo.Attrs of
-                                         None => None
-                                       | Some v => Some ({nm = v} ++ r))
-                             (Some {}) fl attrs of
-                           None => None
-                         | Some vs =>
-                           let
-                               val v = {Attrs = vs, Cdata = tinfo.Cdata}
-                           in
-                               case accept v of
-                                   None => None
-                                 | Some _ => Some (Some v)
-                           end,
+                       let
+                           val v = {Attrs = @mp [fn _ => string] [fn _ => option string]
+                                             (fn [u] aname => List.assoc aname tinfo.Attrs)
+                                             fl attrs,
+                                    Cdata = tinfo.Cdata}
+                       in
+                           case accept v of
+                               None => None
+                             | Some _ => Some (Some v)
+                       end,
      ExitTag = fn _ => None,
      Finished = fn state => case state of
                                 None => None
@@ -47,13 +39,28 @@ fun tagG [attrs ::: {Unit}] [t ::: Type] (fl : folder attrs) (accept : {Attrs : 
                                     None => None
                                   | Some v => Some (v, False)}
 
+fun allPresent [attrs ::: {Unit}] (fl : folder attrs) (attrs : $(mapU (option string) attrs)) : option $(mapU string attrs) =
+    @foldUR [option string] [fn attrs => option $(mapU string attrs)]
+    (fn [nm ::_] [r ::_] [[nm] ~ r] os acc =>
+        case (os, acc) of
+            (Some s, Some acc) => Some ({nm = s} ++ acc)
+          | _ => None)
+    (Some {}) fl attrs
+
 fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) {Attrs : $(mapU string attrs), Cdata : option string} =
-    @tagG fl Some name attrs
+    @tagG fl (fn r =>
+                 case @allPresent fl r.Attrs of
+                     None => None
+                   | Some attrs => Some (r -- #Attrs ++ {Attrs = attrs}))
+     name attrs
 
 fun tagA [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) $(mapU string attrs) =
-    @tagG fl (fn r => Some r.Attrs) name attrs
+    @tagG fl (fn r => @allPresent fl r.Attrs) name attrs
+fun tagAO [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
+    : pattern (tagInternal attrs) $(mapU (option string) attrs) =
+    @tagG fl (fn r => Some (r.Attrs)) name attrs
 
 fun tagC (name : string) : pattern (tagInternal []) string =
     tagG (fn r => r.Cdata) name {}
@@ -62,9 +69,10 @@ datatype status a = Initial | Pending of a | Matched of a
 
 con childrenInternal (parent :: Type) (children :: {Type}) = option (parent * int * $(map status children))
 
-fun children [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
-             (parent : pattern parentI parent) (children : $(map (fn (i, d) => pattern i d) children)) (fl : folder children)
-    : pattern (childrenInternal parentI (map fst children)) (parent * $(map snd children)) =
+fun childrenG [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}] [t ::: Type]
+              (ready : $(map (fn (i, d) => option d) children) -> option t)
+              (parent : pattern parentI parent) (children : $(map (fn (i, d) => pattern i d) children)) (fl : folder children)
+    : pattern (childrenInternal parentI (map fst children)) (parent * t) =
       {Initial = None,
        EnterTag = fn tinfo state =>
                      case state of
@@ -74,34 +82,37 @@ fun children [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
                             | Some pstate => Some (Some (pstate, 1, @map0 [status] (fn [t ::_] => Initial)
                                                                      (@@Folder.mp [fst] [_] fl))))
                        | Some (pstate, depth, cstates) =>
-                         Some (Some (pstate,
-                                     depth+1,
-                                     @map2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn (i, d) => status i]
-                                      (fn [p] (ch : pattern p.1 p.2) (cstate : status p.1) =>
-                                          case cstate of
-                                              Initial =>
-                                              (case ch.EnterTag tinfo ch.Initial of
-                                                   None => Initial
-                                                 | Some v =>
-                                                   case ch.Finished v of
-                                                       None => Pending v
-                                                     | _ => Matched v)
-                                            | Pending cstate =>
-                                              (case ch.EnterTag tinfo cstate of
-                                                   None => Initial
-                                                 | Some v =>
-                                                   case ch.Finished v of
-                                                       None => Pending v
-                                                     | _ => Matched v)
-                                            | v => v)
-                                      fl children cstates)),
+                         if depth = 0 then
+                             case parent.EnterTag tinfo parent.Initial of
+                                 None => None
+                               | Some pstate => Some (Some (pstate, 1, @map0 [status] (fn [t ::_] => Initial)
+                                                                        (@@Folder.mp [fst] [_] fl)))
+                         else
+                             Some (Some (pstate,
+                                         depth+1,
+                                         @map2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn (i, d) => status i]
+                                          (fn [p] (ch : pattern p.1 p.2) (cstate : status p.1) =>
+                                              case cstate of
+                                                  Initial =>
+                                                  (case ch.EnterTag tinfo ch.Initial of
+                                                       None => Initial
+                                                     | Some v =>
+                                                       case ch.Finished v of
+                                                           None => Pending v
+                                                         | _ => Matched v)
+                                                | Pending cstate =>
+                                                  (case ch.EnterTag tinfo cstate of
+                                                       None => Initial
+                                                     | Some v =>
+                                                       case ch.Finished v of
+                                                           None => Pending v
+                                                         | _ => Matched v)
+                                                | v => v)
+                                          fl children cstates)),
        ExitTag = fn state =>
                     case state of
                         None => None
-                      | Some (pstate, 1, cstates) =>
-                        (case parent.ExitTag pstate of
-                             None => None
-                           | Some pstate => Some (Some (pstate, 0, cstates)))
+                      | Some (pstate, 1, cstates) => Some (Some (pstate, 0, cstates))
                       | Some (pstate, depth, cstates) =>
                         Some (Some (pstate, depth-1,
                                     @map2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn (i, d) => status i]
@@ -118,25 +129,33 @@ fun children [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
                               fl children cstates)),
        Finished = fn state =>
                      case state of
-                         Some (pstate, _, cstates) =>
+                         Some (pstate, 0, cstates) =>
                          (case parent.Finished pstate of
                               None => None
                             | Some (pdata, pcont) =>
-                              case @foldR2 [fn (i, d) => pattern i d] [fn (i, d) => status i] [fn cs => option $(map snd cs)]
-                                    (fn [nm ::_] [p ::_] [r ::_] [[nm] ~ r] (ch : pattern p.1 p.2) (cstate : status p.1) acc =>
-                                        case acc of
-                                            None => None
-                                          | Some acc =>
-                                            case cstate of
-                                                Matched cstate =>
-                                                (case ch.Finished cstate of
-                                                     None => None
-                                                   | Some (cdata, _) => Some ({nm = cdata} ++ acc))
-                                              | _ => None)
-                                    (Some {}) fl children cstates of
+                              case ready (@map2 [fn (i, d) => status i] [fn (i, d) => pattern i d] [fn (i, d) => option d]
+                                           (fn [p] (cstate : status p.1) (ch : pattern p.1 p.2) =>
+                                               case cstate of
+                                                   Matched v => Option.mp (fn p => p.1) (ch.Finished v)
+                                                 | _ => None) fl cstates children) of
                                   None => None
                                 | Some cdata => Some ((pdata, cdata), pcont))
                        | _ => None}
+
+fun children [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
+             (parent : pattern parentI parent) (children : $(map (fn (i, d) => pattern i d) children)) (fl : folder children)
+    : pattern (childrenInternal parentI (map fst children)) (parent * $(map snd children)) =
+      @childrenG (@foldR [fn (i, d) => option d] [fn cs => option $(map snd cs)]
+                   (fn [nm ::_] [p ::_] [r ::_] [[nm] ~ r] (cstate : option p.2) acc =>
+                       case (cstate, acc) of
+                           (Some cstate, Some acc) => Some ({nm = cstate} ++ acc)
+                         | _ => None)
+                   (Some {}) fl) parent children fl
+
+fun childrenO [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
+             (parent : pattern parentI parent) (children : $(map (fn (i, d) => pattern i d) children)) (fl : folder children)
+    : pattern (childrenInternal parentI (map fst children)) (parent * $(map (fn (i, d) => option d) children)) =
+      @childrenG Some parent children fl
 
 con treeInternal (parent :: Type) (child :: Type) = option (parent * int * option child)
 
@@ -157,10 +176,7 @@ fun tree [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]
      ExitTag = fn state =>
                   case state of
                       None => None
-                    | Some (pstate, 1, cstate) =>
-                      (case parent.ExitTag pstate of
-                           None => None
-                         | Some pstate => Some (Some (pstate, 0, cstate)))
+                    | Some (_, 1, _) => None
                     | Some (pstate, depth, cstate) =>
                       Some (Some (pstate, depth-1, Option.bind child.ExitTag cstate)),
      Finished = fn state =>
@@ -249,10 +265,10 @@ fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : dat
                                         case String.split xml #"=" of
                                             None => (xml, acc, False)
                                           | Some (aname, xml) =>
-                                            if xml = "" || String.sub xml 0 <> #"\"" then
+                                            if xml = "" || (String.sub xml 0 <> #"\"" && String.sub xml 0 <> #"'") then
                                                 (xml, (aname, "") :: acc, False)
                                             else
-                                                case String.split (String.suffix xml 1) #"\"" of
+                                                case String.split (String.suffix xml 1) (String.sub xml 0) of
                                                     None => (xml, (aname, "") :: acc, False)
                                                   | Some (value, xml) =>
                                                     if xml = "" then

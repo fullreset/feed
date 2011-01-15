@@ -9,6 +9,9 @@ val tag : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
 
 val tagA : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
           -> pattern (tagInternal attrs) $(mapU string attrs)
+val tagAO : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
+            -> pattern (tagInternal attrs) $(mapU (option string) attrs)
+
 val tagC : string -> pattern (tagInternal []) string
 
 con childrenInternal :: Type -> {Type} -> Type
@@ -16,6 +19,9 @@ con childrenInternal :: Type -> {Type} -> Type
 val children : parentI ::: Type -> parent ::: Type -> children ::: {(Type * Type)}
                -> pattern parentI parent -> $(map (fn (i, d) => pattern i d) children) -> folder children
                -> pattern (childrenInternal parentI (map fst children)) (parent * $(map snd children))
+val childrenO : parentI ::: Type -> parent ::: Type -> children ::: {(Type * Type)}
+                -> pattern parentI parent -> $(map (fn (i, d) => pattern i d) children) -> folder children
+                -> pattern (childrenInternal parentI (map fst children)) (parent * $(map (fn (i, d) => option d) children))
 
 con treeInternal :: Type -> Type -> Type
 
