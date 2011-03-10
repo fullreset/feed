@@ -30,6 +30,7 @@ val tree : parentI ::: Type -> parent ::: Type -> childI ::: Type -> child ::: T
            -> pattern (treeInternal parentI childI) (parent * child)
 
 type document
+val show_document : show document
 
 val fetch : string (* url *) -> transaction document
 val app : internal ::: Type -> data ::: Type -> pattern internal data -> (data -> transaction {}) -> document -> transaction {}

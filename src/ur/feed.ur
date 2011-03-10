@@ -194,6 +194,7 @@ fun tree [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]
                                  | Some (cdata, _) => Some ((pdata, cdata), True)}
 
 type document = string
+val show_document = _
 
 val fetch = FeedFfi.fetch
 
