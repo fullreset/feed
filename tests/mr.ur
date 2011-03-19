@@ -1,12 +1,14 @@
 fun main () =
+    doc <- Feed.fetch "http://marginalrevolution.com/feed";
+
     Feed.app (Feed.children
-                  (Feed.tagA "item" {1 = "rdf:about"})
-                  (Feed.tagC "title", Feed.tagC "content:encoded"))
-             (fn (item, props) =>
-                 debug ("URL: " ^ item.1);
-                 debug ("Title: " ^ props.1);
-                 debug ("Content: " ^ props.2))
-             "http://feeds.feedburner.com/marginalrevolution/hCQh";
+                  (Feed.tagA "item" ())
+                  (Feed.tagC "link", Feed.tagC "title", Feed.tagC "content:encoded"))
+             (fn ((), (link, title, content)) =>
+                 debug ("URL: " ^ link);
+                 debug ("Title: " ^ title);
+                 debug ("Content: " ^ content))
+             doc;
     return <xml>
       See stdout.
     </xml>
