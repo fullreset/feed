@@ -26,6 +26,11 @@ val tagA : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
           -> pattern (tagInternal attrs) $(mapU string attrs)
 (* A version of [tag] that ignores CDATA *)
 
+val tagAV : attrs ::: {Unit} -> folder attrs -> string -> $(mapU (string * option string) attrs)
+            -> pattern (tagInternal attrs) $(mapU string attrs)
+(* Extension of tagA with optional specification of values which attributes must
+ * bear in order to count as a match. *)
+
 val tagAO : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
             -> pattern (tagInternal attrs) $(mapU (option string) attrs)
 (* A version of [tagA] that makes each attribute optional *)

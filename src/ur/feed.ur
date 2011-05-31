@@ -47,6 +47,16 @@ fun allPresent [attrs ::: {Unit}] (fl : folder attrs) (attrs : $(mapU (option st
           | _ => None)
     (Some {}) fl attrs
 
+fun allPresentE [attrs ::: {Unit}] (fl : folder attrs) (vs : $(mapU (option string) attrs)) (attrs : $(mapU (option string) attrs))
+    : option $(mapU string attrs) =
+    @foldUR2 [option string] [option string] [fn attrs => option $(mapU string attrs)]
+    (fn [nm ::_] [r ::_] [[nm] ~ r] os os' acc =>
+        case (os, os', acc) of
+            (Some s, Some s', Some acc) => if s = s' then Some ({nm = s'} ++ acc) else None
+          | (None, Some s', Some acc) => Some ({nm = s'} ++ acc)
+          | _ => None)
+    (Some {}) fl vs attrs
+
 fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) {Attrs : $(mapU string attrs), Cdata : option string} =
     @tagG fl (fn r =>
@@ -58,6 +68,16 @@ fun tag [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU s
 fun tagA [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) $(mapU string attrs) =
     @tagG fl (fn r => @allPresent fl r.Attrs) name attrs
+
+fun tagAV [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU (string * option string) attrs))
+    : pattern (tagInternal attrs) $(mapU string attrs) =
+    let
+        val as = @mp [fn _ => (string * option string)] [fn _ => string] (fn [u] (x, _) => x) fl attrs
+        val vs = @mp [fn _ => (string * option string)] [fn _ => option string] (fn [u] (_, x) => x) fl attrs
+    in
+        @tagG fl (fn r => @allPresentE fl vs r.Attrs) name as
+    end
+
 fun tagAO [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) $(mapU (option string) attrs) =
     @tagG fl (fn r => Some (r.Attrs)) name attrs
