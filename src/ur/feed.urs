@@ -69,6 +69,11 @@ val show_document : show document
 val fetch : string -> transaction document
 (* Retrieve a document by URL. *)
 
+val app' : internal ::: Type -> data ::: Type -> acc ::: Type -> pattern internal data 
+           -> (data -> acc -> transaction acc) -> document -> acc -> transaction acc
+(* Find all matches of a pattern in a document, running an imperative function
+ * on the data returned by each match while threading through some state. *)
+
 val app : internal ::: Type -> data ::: Type -> pattern internal data -> (data -> transaction {}) -> document -> transaction {}
 (* Find all matches of a pattern in a document, running an imperative function
  * on the data returned by each match. *)

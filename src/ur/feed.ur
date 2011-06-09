@@ -218,28 +218,29 @@ val show_document = _
 
 val fetch = FeedFfi.fetch
 
-fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : data -> transaction {}) (doc : document) : transaction {} =
+fun app' [internal ::: Type] [data ::: Type] [acc ::: Type] (p : pattern internal data) (f : data -> acc -> transaction acc) 
+        (doc : document) (acc : acc) : transaction acc =
     let
-        fun recur xml state =
+        fun recur xml acc state =
             case String.seek xml #"<" of
-                None => return ()
+                None => return acc
               | Some xml =>
                 if xml <> "" && String.sub xml 0 = #"/" then
                     case String.seek xml #"\x3E" of
-                        None => return ()
+                        None => return acc
                       | Some xml =>
                         case p.ExitTag state of
-                            None => recur xml p.Initial
+                            None => recur xml acc p.Initial
                           | Some state =>
                             case p.Finished state of
-                                 None => recur xml state
+                                 None => recur xml acc state 
                                | Some (data, cont) =>
-                                 f data;
-                                 recur xml (if cont then state else p.Initial)
+                                 acc <- f data acc;
+                                 recur xml acc (if cont then state else p.Initial)
                 else if xml <> "" && String.sub xml 0 = #"?" then
                     case String.seek xml #"\x3E" of
-                        None => return ()
-                      | Some xml => recur xml state
+                        None => return acc
+                      | Some xml => recur xml acc state
                 else if xml <> "" && String.sub xml 0 = #"!" then
                     if String.lengthGe xml 3 && String.sub xml 1 = #"-" && String.sub xml 2 = #"-" then
                         let
@@ -252,18 +253,18 @@ fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : dat
                                     else
                                         skipper xml
                         in
-                            recur (skipper (String.suffix xml 3)) state
+                            recur (skipper (String.suffix xml 3)) acc state
                         end
                     else
                         case String.seek xml #"]" of
-                            None => return ()
+                            None => return acc
                           | Some xml =>
                             case String.seek xml #"\x3E" of
-                                None => return ()
-                              | Some xml => recur xml state
+                                None => return acc
+                              | Some xml => recur xml acc state
                 else
                     case String.msplit {Needle = " >/", Haystack = xml} of
-                        None => return ()
+                        None => return acc
                       | Some (tagName, ch, xml) =>
                         let
                             fun readAttrs ch xml acc =
@@ -329,22 +330,25 @@ fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : dat
                                       | Some (cdata, xml) => (xml, Some cdata)
                         in
                             case p.EnterTag {Tag = tagName, Attrs = attrs, Cdata = cdata} state of
-                                None => recur xml p.Initial
+                                None => recur xml acc p.Initial
                               | Some state =>
                                 case p.Finished state of
                                      None =>
                                      (case (if ended then p.ExitTag state else Some state) of
-                                          None => recur xml p.Initial
+                                          None => recur xml acc p.Initial
                                         | Some state =>
                                           case p.Finished state of
-                                              None => recur xml state
+                                              None => recur xml acc state
                                             | Some (data, cont) =>
-                                              f data;
-                                              recur xml (if cont then state else p.Initial))
+                                              acc <- f data acc;
+                                              recur xml acc (if cont then state else p.Initial))
                                    | Some (data, cont) =>
-                                     f data;
-                                     recur xml (if cont then state else p.Initial)
+                                     acc <- f data acc;
+                                     recur xml acc (if cont then state else p.Initial)
                         end
     in
-        recur doc p.Initial
+        recur doc acc p.Initial
     end
+
+fun app [internal ::: Type] [data ::: Type] (p : pattern internal data) (f : data -> transaction {}) (doc : document) : transaction {} =
+    app' p (fn data acc => f data) doc ()
