@@ -177,6 +177,35 @@ fun childrenO [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}
     : pattern (childrenInternal parentI (map fst children)) (parent * $(map (fn (i, d) => option d) children)) =
       @childrenG Some parent children fl
 
+datatype required t = Required of t | Optional of t
+
+fun childrenO' [parentI ::: Type] [parent ::: Type] [children ::: {(Type * Type)}]
+              (parent : pattern parentI parent) (children : $(map (fn (i, d) => required (pattern i d)) children)) (fl : folder children)
+    : pattern (childrenInternal parentI (map fst children)) (parent * $(map (fn (i, d) => option d) children)) =
+      let
+        val os = @mp [fn (i, d) => required (pattern i d)] [fn (i, d) => bool] 
+                  (fn [u] pat => case pat of
+                                     Required _ => False
+                                   | Optional _ => True) fl children
+        val vs = @mp [fn (i, d) => required (pattern i d)] [fn (i, d) => pattern i d]
+                  (fn [u] pat => case pat of
+                                     Required pat' => pat'
+                                   | Optional pat' => pat') fl children
+      in
+          @childrenG (@foldR2 [fn _ => bool] [fn (i, d) => option d] [fn r => option $(map (fn (i, d) => option d) r)]
+                       (fn [nm ::_] [p ::_] [r ::_] [[nm] ~ r] (isO : bool) (cstate : option p.2) acc =>
+                           case acc of
+                               None => None
+                             | Some acc =>
+                               if isO then
+                                   Some ({nm = cstate} ++ acc)
+                               else
+                                   case cstate of
+                                       None => None
+                                     | Some _ => Some ({nm = cstate} ++ acc))
+                       (Some {}) fl os) parent vs fl
+      end
+          
 con treeInternal (parent :: Type) (child :: Type) = option (parent * int * option child)
 
 fun tree [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]

@@ -53,6 +53,15 @@ val childrenO : parentI ::: Type -> parent ::: Type -> children ::: {(Type * Typ
                 -> pattern (childrenInternal parentI (map fst children)) (parent * $(map (fn (i, d) => option d) children))
 (* A version of [children] where each child pattern need not be matched *)
 
+datatype required t = Required of t | Optional of t
+(* Used for marking items as required or optional. *)
+
+val childrenO' : parentI ::: Type -> parent ::: Type -> children ::: {(Type * Type)}
+                 -> pattern parentI parent -> $(map (fn (i, d) => required (pattern i d)) children) -> folder children
+                 -> pattern (childrenInternal parentI (map fst children)) (parent * $(map (fn (i, d) => option d) children))
+(* A version of [children] where the caller marks each child pattern
+ * as either required or optional. *)
+
 con treeInternal :: Type -> Type -> Type
 
 val tree : parentI ::: Type -> parent ::: Type -> childI ::: Type -> child ::: Type
