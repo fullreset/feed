@@ -373,6 +373,11 @@ fun app' [internal ::: Type] [data ::: Type] [acc ::: Type] (p : pattern interna
                                               recur xml acc (if cont then state else p.Initial))
                                    | Some (data, cont) =>
                                      acc <- f data acc;
+                                     state <- return (if ended then
+                                                          Option.get p.Initial (p.ExitTag state)
+                                                      else
+                                                          state);
+                                                   
                                      recur xml acc (if cont then state else p.Initial)
                         end
     in
