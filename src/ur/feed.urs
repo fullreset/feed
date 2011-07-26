@@ -71,6 +71,14 @@ val tree : parentI ::: Type -> parent ::: Type -> childI ::: Type -> child ::: T
  * be matched at any depth within the parent's subtree.  Unlike [children],
  * [tree] finds as many subtree matches per parent node as possible. *)
 
+con gatherInternal :: Type -> Type -> Type -> Type
+
+val gather : parentI ::: Type -> parent ::: Type -> childI ::: Type -> child ::: Type
+             -> pattern parentI parent -> pattern childI child
+             -> pattern (gatherInternal parentI childI child) (parent * list child)
+(* A combinator like tree that collects matching subtree patterns into a list rather
+ * than handling them one at a time. *)
+
 type document
 val show_document : show document
 (* Type of uninterpreted XML documents *)

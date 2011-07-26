@@ -242,6 +242,55 @@ fun tree [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]
                                    None => None
                                  | Some (cdata, _) => Some ((pdata, cdata), True)}
 
+con gatherInternal (parent :: Type) (child :: Type) (data :: Type) = option (parent * bool * int * option child * list data)
+
+fun gather [parentI ::: Type] [parent ::: Type] [childI ::: Type] [child ::: Type]
+    (parent : pattern parentI parent) (child : pattern childI child)
+    : pattern (gatherInternal parentI childI child) (parent * list child) =
+    {Initial = None,
+     EnterTag = fn tinfo state =>
+                   case state of
+                       None =>
+                       (case parent.EnterTag tinfo parent.Initial of
+                            None => None
+                          | Some pstate => Some (Some (pstate, False, 1, None, Nil)))
+                     | Some (pstate, return, depth, cstate, clist) =>
+                       let
+                           val cstate' = child.EnterTag tinfo (Option.get child.Initial cstate)
+                       in
+                           case child.Finished (Option.get child.Initial cstate') of
+                               None =>
+                               Some (Some (pstate, return, depth+1, cstate', clist))
+                             | Some (cdata, _) =>
+                               Some (Some (pstate, return, depth+1, None, cdata :: clist))
+                       end,
+     ExitTag = fn state =>
+                  case state of
+                      None => None
+                    | Some (pstate, _, 1, cstate, clist) =>
+                      Some (Some (pstate, True, 1, cstate, clist))
+                    | Some (pstate, return, depth, cstate, clist) =>
+                      let
+                          val cstate' = child.ExitTag (Option.get child.Initial cstate)
+                      in
+                          case child.Finished (Option.get child.Initial cstate') of
+                              None =>
+                              Some (Some (pstate, return, depth-1, cstate', clist))
+                            | Some (cdata, _) =>
+                              Some (Some (pstate, return, depth-1, None, cdata :: clist))
+                      end,
+     Finished = fn state =>
+                   case state of
+                       None => None
+                     | Some (pstate, return, _, _, clist) =>
+                       case parent.Finished pstate of
+                           None => None
+                         | Some (pdata, _) =>
+                           if return then
+                               Some ((pdata, List.rev clist), False)
+                           else
+                               None}
+
 type document = string
 val show_document = _
 
