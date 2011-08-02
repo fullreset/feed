@@ -1,10 +1,11 @@
 fun main () =
-    doc <- Feed.fetch "http://marginalrevolution.com/feed";
+    doc <- Feed.fetch "http://feeds.feedburner.com/marginalrevolution/feed";
 
     Feed.app (Feed.children
                   (Feed.tagA "item" ())
                   (Feed.tagC "link", Feed.tagC "title", Feed.tagC "content:encoded"))
              (fn ((), (link, title, content)) =>
+                 error <xml/>;
                  debug ("URL: " ^ link);
                  debug ("Title: " ^ title);
                  debug ("Content: " ^ content))
