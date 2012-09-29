@@ -35,6 +35,13 @@ val tagAO : attrs ::: {Unit} -> folder attrs -> string -> $(mapU string attrs)
             -> pattern (tagInternal attrs) $(mapU (option string) attrs)
 (* A version of [tagA] that makes each attribute optional *)
 
+val tagAOR : optional ::: {Unit} -> required ::: {Unit} -> [optional ~ required]
+             => folder optional -> folder required -> string
+             -> $(mapU string required) -> $(mapU string optional)
+             -> pattern (tagInternal (optional ++ required))
+                        $(mapU string required ++ mapU (option string) optional)
+(* A version of [tagAO] that does a check for mere presence of other attributes *)
+
 val tagC : string -> pattern (tagInternal []) string
 (* A version of [tag] that only matches tags with nonempty CDATA and returns
  * only that text *)

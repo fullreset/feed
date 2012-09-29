@@ -1,0 +1,5 @@
+library ../src/ur/lib
+rewrite all Reddit/*
+
+$/list
+reddit

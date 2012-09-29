@@ -80,7 +80,17 @@ fun tagAV [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU
 
 fun tagAO [attrs ::: {Unit}] (fl : folder attrs) (name : string) (attrs : $(mapU string attrs))
     : pattern (tagInternal attrs) $(mapU (option string) attrs) =
-    @tagG fl (fn r => Some (r.Attrs)) name attrs
+    @tagG fl (fn r => Some r.Attrs) name attrs
+
+fun tagAOR [optional ::: {Unit}] [required ::: {Unit}] [optional ~ required]
+           (ofl : folder optional) (rfl : folder required)
+           (name : string) (required : $(mapU string required)) (optional : $(mapU string optional))
+    : pattern (tagInternal (optional ++ required)) $(mapU string required ++ mapU (option string) optional) =
+    @tagG (@Folder.concat ! ofl rfl)
+     (fn r => case @allPresent rfl (r.Attrs --- mapU (option string) optional) of
+                  None => None
+                | Some req => Some (r.Attrs --- mapU (option string) required ++ req))
+     name (required ++ optional)
 
 fun tagC (name : string) : pattern (tagInternal []) string =
     tagG (fn r => r.Cdata) name {}
