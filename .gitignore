@@ -1,0 +1,17 @@
+*~
+*.o
+.deps
+.libs
+*.lo
+*.la
+*.exe
+*.sql
+*.cache
+*.log
+*.status
+Makefile
+src/c/Makefile
+src/ur/config.urp
+libtool
+config.h
+stamp-h1
